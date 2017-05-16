@@ -1,31 +1,47 @@
 package io.github.ensyb.repository;
 
 import java.sql.Connection;
-import java.sql.DriverManager;
-import java.sql.Statement;
+import java.sql.PreparedStatement;
 
-import org.apache.derby.jdbc.EmbeddedDriver;
+import org.apache.commons.dbcp2.BasicDataSource;
 import org.junit.After;
 import org.junit.Before;
 
 public class BaseRepositoryTest {
 
-	private final String PROTOCOL_DATBASE_NAME_FLAGS = "jdbc:derby:myTestDataBase/testDb;create=true";
-	private final String HUMAN_TABLE_NAME = "humans";
-	
-	protected Connection connection;
+	protected final class H2Configuration {
 
-	protected String createTableSql = "CREATE TABLE "+ HUMAN_TABLE_NAME+ "(age INTEGER NOT NULL, name VARCHAR(40))";
-	
+		private final String driverClass = "org.h2.Driver";
+		private final String databaseUrl = "jdbc:h2:mem:repoTest;mvcc=true;lock_timeout=10000;"
+				+ "MODE=MYSQL;lock_mode=0;AUTOCOMMIT=FALSE;DATABASE_TO_UPPER=false";
+
+		public BasicDataSource useDataSource() {
+			BasicDataSource dataSource = new BasicDataSource();
+			dataSource.setDriverClassName(this.driverClass);
+			dataSource.setUrl(this.databaseUrl);
+			dataSource.setUsername("");
+			dataSource.setPassword("");
+			dataSource.setInitialSize(1);
+
+			return dataSource;
+
+		}
+	}
+
 	@Before
-	public void setup() {
+	public void beforeEach() {
 		try {
-			DriverManager.registerDriver(new EmbeddedDriver());
-			this.connection = DriverManager.getConnection(PROTOCOL_DATBASE_NAME_FLAGS);
-			
-			Statement statement = this.connection.createStatement();
-			
-			statement.executeUpdate(createTableSql);
+			BasicDataSource ds = new H2Configuration().useDataSource();
+			String tableDefinition = "CREATE TABLE IF NOT EXISTS `human` ("+
+					  "`id` integer NOT NULL AUTO_INCREMENT PRIMARY KEY,"+
+					  "`age` INT(3) NOT NULL,"+
+					  "`name` varchar(48) NOT NULL, )";
+
+			Connection connection = ds.getConnection();
+			PreparedStatement statement = connection.prepareStatement(tableDefinition);
+			statement.executeUpdate();
+			connection.close();
+
 		} catch (Exception e) {
 			e.printStackTrace();
 		}
@@ -33,18 +49,18 @@ public class BaseRepositoryTest {
 
 	@After
 	public void taredown() {
-		if (this.connection != null) {
-			try {
-				
-				Statement statement = this.connection.createStatement();
-				
-				statement.executeUpdate("DROP TABLE "+HUMAN_TABLE_NAME);
-				
-				DriverManager.getConnection(PROTOCOL_DATBASE_NAME_FLAGS+";shutdown=true");
-				this.connection.close();
-			} catch (Exception e) {
-				e.printStackTrace();
-			}
+		try {
+			BasicDataSource ds = new H2Configuration().useDataSource();
+
+			String drop = "DROP TABLE IF EXISTS `human`; ";
+
+			Connection connection = ds.getConnection();
+			PreparedStatement statement = connection.prepareStatement(drop);
+			statement.executeUpdate();
+			connection.close();
+
+		} catch (Exception e) {
+			e.printStackTrace();
 		}
 	}
 

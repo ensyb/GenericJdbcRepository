@@ -1,17 +1,18 @@
 package io.github.ensyb.repository;
 
 import java.sql.Connection;
+import java.util.List;
 
-public interface GenericRepository<ValueObjectType> {
+public interface GenericRepository<ValueObjectType, WithFunction> {
 
-	public SqlExecution<ValueObjectType> objectFromWhere(String columnName, Object value);
+	public Execute<ValueObjectType, WithFunction> objectFromWhere(String keyName, Object key);
 
-	public SqlExecution<ValueObjectType> listFromWhere(String columnName, Object value);
+	public Execute<List<ValueObjectType>, WithFunction> listFromWhere(String keyName, Object key, Integer limit);
 
-	public SqlExecution<ValueObjectType> insertObject(ValueObjectType object);
+	public Execute<ValueObjectType, WithFunction> insertObject(ValueObjectType object);
 
-	public SqlExecution<ValueObjectType> updateObject(ValueObjectType object);
+	public Execute<ValueObjectType, WithFunction> updateObject(ValueObjectType object, String KeyName, Object Key);
 
-	public void deleteObject(ValueObjectType object, Connection connection);
+	public void deleteObject(String keyName, Object key, Connection connection);
 
 }

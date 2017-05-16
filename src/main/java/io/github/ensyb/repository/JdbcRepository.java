@@ -4,71 +4,137 @@ import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
-import java.util.Arrays;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 
-public class JdbcCrudRepository<ValueObjectType> implements GenericRepository<ValueObjectType> {
+import io.github.ensyb.repository.Execute.SqlExecution;
 
+public class JdbcRepository<ValueObjectType> implements GenericRepository<ValueObjectType, Connection> {
+	
 	protected ObjectDataAdapter<ValueObjectType> objectDataAdapter;
 	protected TableDataAdapter<ValueObjectType> tableDataAdapter;
 	private String tableName;
 
-	public JdbcCrudRepository(String tableName, ObjectDataAdapter<ValueObjectType> objectDataAdapter,
+	public JdbcRepository(String tableName, ObjectDataAdapter<ValueObjectType> objectDataAdapter,
 			TableDataAdapter<ValueObjectType> tableDataAdapter) {
 		
 		this.tableName = tableName;
 		this.objectDataAdapter = objectDataAdapter;
 		this.tableDataAdapter = tableDataAdapter;
 	}
-
+	
 	@Override
 	public SqlExecution<ValueObjectType> objectFromWhere(String idColumnName, Object id) {
 		return (connection) -> {
-			String ovako = constructSelectColumnsWhere(idColumnName, "=", "*");
-			PreparedStatement statement = preparedStatementBuilder(connection,
-					ovako, id);
-			ResultSet resultSet = statement.executeQuery();
+			try {
+				String query = constructSelectColumnsWhere(idColumnName, "=", "*");
+				PreparedStatement statement;
+				statement = preparedStatementBuilder(connection, query, id);
 
-			ValueObjectType querriedResult = null;
+				ResultSet resultSet = statement.executeQuery();
+				ValueObjectType querriedResult = null;
 
-			if (resultSet.next()) {
-				querriedResult = tableDataAdapter.row(resultSet);
+				if (resultSet.next()) {
+					querriedResult = tableDataAdapter.row(resultSet);
+				}
+				return querriedResult;
+			} catch (SQLException e) {
+				throw new RepositoryException(e);
 			}
-			return querriedResult;
 		};
 
 	}
 
-	/**
-	 * Do not return generated keys
-	 */
 	@Override
 	public SqlExecution<ValueObjectType> insertObject(ValueObjectType object) {
 		return (connection) -> {
-			PreparedStatement statement = preparedStatementBuilder(connection, constructInsertIntoRow(object),
-					objectDataAdapter.mapToComumns(object).values().stream().toArray(Object[]::new));
-			statement.executeUpdate();
-			return object;
+			try {
+				PreparedStatement statement = preparedStatementBuilder(connection, constructInsertIntoRow(object),
+						objectDataAdapter.mapToComumns(object).values().stream().toArray(Object[]::new));
+				statement.executeUpdate();
+				return object;
+			} catch (SQLException e) {
+				throw new RepositoryException(e);
+			}
+		};
+	}
+
+
+	
+	@Override
+	public SqlExecution<List<ValueObjectType>> listFromWhere(String columnName, Object value, Integer limit) {
+		return (connection) -> {
+			try {
+				String selectQuery = constructSelectColumnsWhere(columnName, "=", "*") + " LIMIT " + limit;
+				PreparedStatement statement = preparedStatementBuilder(connection, selectQuery, value);
+				ResultSet resultSet = statement.executeQuery();
+
+				List<ValueObjectType> querriedResultSet = new ArrayList<>();
+				while (resultSet.next()) {
+					querriedResultSet.add(tableDataAdapter.row(resultSet));
+				}
+				return querriedResultSet;
+			} catch (SQLException e) {
+				throw new RepositoryException(e);
+			}
+		};
+	}
+	@Override
+	public SqlExecution<ValueObjectType> updateObject(ValueObjectType object,String column, Object value) {
+		return (connction) -> {
+			try {
+				// update object
+				String updateQuerry = constructUpdateRow(object, column);
+				
+				List<Object> values = objectDataAdapter.mapToComumns(object)
+						.values()
+						.stream()
+						.collect(Collectors.toList());
+				
+				values.add(value);
+				
+				Object[] valuesForUpdate = values.toArray(new Object[values.size()]);
+				PreparedStatement statement = preparedStatementBuilder(connction, updateQuerry,valuesForUpdate);
+				
+				int result = statement.executeUpdate();
+
+				if (result < objectDataAdapter.mapToComumns(object).keySet().size()-1)
+					throw new RepositoryException("Update failed");
+				else
+					return object;
+			} catch (SQLException e) {
+				throw new RepositoryException(e);
+			}
 		};
 	}
 
 	@Override
-	public SqlExecution<ValueObjectType> listFromWhere(String columnName, Object value) {
-		// TODO Auto-generated method stub
-		return null;
-	}
-
-	@Override
-	public SqlExecution<ValueObjectType> updateObject(ValueObjectType object) {
-		// TODO Auto-generated method stub
-		return null;
-	}
-
-	@Override
-	public void deleteObject(ValueObjectType object, Connection connection) {
+	public void deleteObject(String columnName, Object value, Connection connection) {
+		try {
+			String deleteQuery = consturctDeleteRow(columnName);
+			PreparedStatement statement = preparedStatementBuilder(connection, deleteQuery, value);
+			statement.executeUpdate();
+			
+		} catch (SQLException e) {
+			throw new RepositoryException(e);
+		}
 		
 	}
-	
+
+	public static class RepositoryException extends RuntimeException{
+		private static final long serialVersionUID = 1L;
+		
+		public RepositoryException(String message) {
+			super(message);
+		}
+		
+		public RepositoryException(Throwable cause) {
+			super(cause);
+		}
+		
+	}
 	
 	private String constructSelectColumnsWhere(String whereColumnName, String operator, String... columnNames) {
 		return new StringBuilder("SELECT ")
@@ -139,5 +205,4 @@ public class JdbcCrudRepository<ValueObjectType> implements GenericRepository<Va
 			preparedStatementIndex++;
 		}
 	}
-
 }
